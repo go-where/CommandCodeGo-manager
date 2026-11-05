@@ -33,6 +33,9 @@ export function recordRequest(rec) {
           inputTokens: rec.inputTokens ?? 0,
           outputTokens: rec.outputTokens ?? 0,
           cachedTokens: rec.cachedTokens ?? 0,
+          durationMs: rec.durationMs ?? null,
+          ttftMs: rec.ttftMs ?? null,
+          statusCode: rec.statusCode ?? null,
         });
       }
     } catch (e) {
@@ -58,6 +61,13 @@ export function instrumentRequest(req, res, endpoint) {
   const t = { model: null, stream: false, provider: null, finishReason: null };
 
   let statusCode = null;
+  // 首字到达时间:首个上游事件写出前调用 t.firstTokenAt(startTime) 打点(仅记第一次)。
+  let ttftMs = null;
+  t.firstTokenAt = (start) => {
+    if (ttftMs != null) return;
+    const origin = Number.isFinite(start) ? start : startedAt;
+    ttftMs = Math.max(0, Date.now() - origin);
+  };
   const origWriteHead = res.writeHead;
   res.writeHead = function (status, ...rest) {
     if (statusCode == null) statusCode = status;
@@ -82,6 +92,8 @@ export function instrumentRequest(req, res, endpoint) {
         statusCode: statusCode ?? res.statusCode ?? null,
         stream: t.stream === true,
         durationMs: Date.now() - startedAt,
+        // 非流式请求没有「首字」概念:整包返回耗时即用户等待时间,用它近似。
+        ttftMs: ttftMs ?? (t.stream === true ? null : Date.now() - startedAt),
         inputTokens: u.inputTokens ?? 0,
         outputTokens: u.outputTokens ?? 0,
         cachedTokens: u.cachedInputTokens ?? u.cachedTokens ?? 0,

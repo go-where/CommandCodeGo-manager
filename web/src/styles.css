@@ -26,6 +26,7 @@
   --color-rose: #e11d48;
   --color-ok: #16a34a;
   --color-warn: #d97706;
+  --color-yellow: #eab308;      /* 图表专用:未命中缓存(亮底取 yellow-500 保证可辨) */
   --color-err: #dc2626;
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "PingFang SC", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -50,6 +51,7 @@ html[data-theme='dark'] {
   --color-rose: #fb7185;
   --color-ok: #4ade80;
   --color-warn: #fbbf24;
+  --color-yellow: #facc15;
   --color-err: #f87171;
 }
 

@@ -91,6 +91,9 @@ export function createAdminApi({ getInflight = () => 0 } = {}) {
         zdr: !!CFG.zdr,
         inflight: getInflight(),
         degraded: isDegraded(),
+        // 直连上游时请求不带 client key,「客户端密钥」为 0 是正常状态,
+        // UI 用这个标记说明流量实际来源,避免误读成故障。
+        direct: CFG.allowDirectUpstreamKey === true,
         keys: {
           upstream: { total: ups.length, active: ups.filter(k => k.status === 'active').length },
           client: { total: clients.length, active: clients.filter(k => k.status === 'active').length },

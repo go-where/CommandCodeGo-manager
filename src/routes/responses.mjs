@@ -551,6 +551,7 @@ async function handleResponses(req, res) {
         'X-Accel-Buffering': 'no',
       };
       const writeEvents = async (evts) => {
+        t.firstTokenAt?.(startTime);
         if (!started) { res.writeHead(200, SSE_HEADERS); started = true; }
         for (const e2 of evts) res.write(e2);
         await waitDrain(res);

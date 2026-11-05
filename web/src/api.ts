@@ -61,6 +61,8 @@ export interface Overview {
   zdr: boolean;
   inflight: number;
   degraded: boolean;
+  /** 上游 key 直连模式:请求不带客户端 key,客户端密钥恒为 0 属正常 */
+  direct: boolean;
   keys: {
     upstream: { total: number; active: number };
     client: { total: number; active: number };
@@ -92,6 +94,10 @@ export interface ClientKey {
 export interface UsageRow {
   day?: string; model?: string; key_id?: number | null; key_name?: string;
   input_tokens: number; output_tokens: number; cached_tokens: number; requests: number;
+  /** 成功请求的整体耗时累计与样本数(均值 = sum / count;0 表示无观测) */
+  duration_ms_sum: number; duration_count: number;
+  /** 首字时间累计与样本数(历史流式请求无记录,仅非流式与升级后新请求有值) */
+  ttft_ms_sum: number; ttft_count: number;
 }
 
 export interface Settings {

@@ -611,6 +611,7 @@ async function handleMessages(req, res) {
         'X-Accel-Buffering': 'no',
       };
       const flushBuf = async () => {
+        t.firstTokenAt?.(startTime);
         if (!started) {
           res.writeHead(200, SSE_HEADERS);
           started = true;

@@ -113,7 +113,8 @@ export function Dashboard() {
         },
         {
           type: 'value',
-          axisLabel: { color: C.txt2, fontSize: 11 },
+          // tokens 轴用 K/M 简写:原始长数字会超出画布右缘被裁掉
+          axisLabel: { color: C.txt2, fontSize: 11, formatter: (v: number) => fmtK(v) },
           splitLine: { show: false },
         },
       ],
@@ -143,7 +144,9 @@ export function Dashboard() {
   return (
     <div className="space-y-5">
       {/* ── 统计卡网格 ── */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 2xl:grid-cols-6">
+      {/* 页面内容区最宽 max-w-6xl(1152px):排 6 列每张仅 ~178px,数字与副标题会被挤成省略号,
+          所以固定 1/2/3 列(≤2 行),卡片宽度足够放下单位与说明行 */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {ov ? (
           <>
             <StatCard label="今日请求" value={fmtInt(today?.requests)} tone="brand" icon={<Activity size={19} />} />
@@ -151,7 +154,8 @@ export function Dashboard() {
             <StatCard label="错误率" value={today && today.requests > 0 ? `${errRate.toFixed(1)}%` : '0%'}
               tone="rose" status={errRate > 5 ? 'err' : errRate > 0 ? 'warn' : 'ok'} icon={<AlertTriangle size={19} />} />
             <StatCard label="客户端密钥" value={fmtInt(ov.keys.client.active)} unit={`共 ${ov.keys.client.total} 个`}
-              tone="violet" icon={<KeyRound size={19} />} />
+              tone="violet" icon={<KeyRound size={19} />}
+              sub={ov.direct && ov.keys.client.total === 0 ? '直连上游 · 不需要客户端密钥' : undefined} />
             <StatCard label="在途请求" value={fmtInt(ov.inflight)} tone="amber" icon={<Radio size={19} />} />
             <StatCard label="运行时长" value={fmtUptime(ov.uptimeSec)} tone="ok" icon={<Timer size={19} />} />
           </>
@@ -234,6 +238,13 @@ export function Dashboard() {
                   {ov.degraded ? <Badge kind="warn">降级</Badge> : <Badge kind="ok">运行中</Badge>}
                 </Row>
                 <Row label="API 地址"><span className="tnum text-xs">{ov.apiBase}</span></Row>
+                <Row label="请求来源">
+                  {ov.keys.client.active > 0
+                    ? <Badge kind="accent">客户端密钥 {fmtInt(ov.keys.client.active)} 个</Badge>
+                    : ov.direct
+                      ? <Badge kind="accent">直连上游</Badge>
+                      : <Badge kind="warn">未配置</Badge>}
+                </Row>
                 <Row label="存储状态">
                   {ov.degraded ? <Badge kind="warn">降级(内存)</Badge> : <Badge kind="ok">正常</Badge>}
                 </Row>

@@ -105,21 +105,22 @@ export function StatCard({ label, value, unit, icon, tone = 'brand', status, sub
   const t = STAT_TONES[tone] ?? STAT_TONES.brand;
   const statusColor = status === 'warn' ? 'text-warn' : status === 'err' ? 'text-err' : status === 'ok' ? 'text-ok' : '';
   return (
-    <Card className="group flex items-center gap-4 px-4 py-4 transition-transform duration-200 hover:-translate-y-0.5">
+    <Card className="group flex items-center gap-3.5 px-4 py-3.5 transition-transform duration-200 hover:-translate-y-0.5">
       {icon && (
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${t.grad} text-white shadow-sm`}>
           {icon}
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-xs text-txt2">{label}</span>
-          {unit && <span className="shrink-0 text-[10px] text-txt3">{unit}</span>}
+        {/* 标题独占一行:单位挪到数值旁,窄卡片下也不会把标题挤成省略号 */}
+        <div className="truncate text-xs text-txt2" title={label}>{label}</div>
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <span className={`tnum truncate text-[22px] font-bold leading-7 tracking-tight ${statusColor || t.num}`}>
+            {value}
+          </span>
+          {unit && <span className="tnum shrink-0 text-[10px] leading-none text-txt3">{unit}</span>}
         </div>
-        <div className={`tnum truncate text-[22px] font-bold leading-7 tracking-tight ${statusColor || t.num}`}>
-          {value}
-        </div>
-        {sub && <div className="tnum mt-0.5 truncate text-[11px] text-txt3">{sub}</div>}
+        {sub && <div className="mt-0.5 truncate text-[11px] leading-4 text-txt3" title={typeof sub === 'string' ? sub : undefined}>{sub}</div>}
       </div>
     </Card>
   );

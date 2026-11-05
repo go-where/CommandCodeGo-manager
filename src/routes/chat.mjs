@@ -330,6 +330,7 @@ async function handleChatCompletions(req, res) {
           for (const line of lines) {
             const events = translator.parseLine(line);
             if (events) {
+              t.firstTokenAt?.(startTime);
               if (!started) {
                 res.writeHead(200, SSE_HEADERS);
                 started = true;
@@ -354,6 +355,7 @@ async function handleChatCompletions(req, res) {
           if (buffer.trim()) {
             const events = translator.parseLine(buffer);
             if (events) {
+              t.firstTokenAt?.(startTime);
               // 必须真正写 header:只置 started 标志会让响应以 implicit 200(无
               // Content-Type)发出,后续 sendJSON 还会因头已发再 writeHead 抛错
               if (!started) {

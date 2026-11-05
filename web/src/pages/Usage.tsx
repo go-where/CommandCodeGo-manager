@@ -4,7 +4,7 @@ import { Activity, Coins, Database, Zap } from 'lucide-react';
 import { fetchUsage, type UsageRow } from '../api';
 import {
   Card, CardBody, CardHeader, EChart, echartsBase, EmptyState, Loading, vgrad,
-  StatCard, Table, Tabs, Td, Th, toast, themeColor, useTheme, fmtInt, fmtK,
+  StatCard, Table, Tabs, Td, Th, toast, themeColor, useTheme, fmtInt, fmtK, fmtMs,
 } from '../ui';
 
 // ── 工具 ──────────────────────────────────────────────────
@@ -17,7 +17,20 @@ function rangeOf(n: number): { from: string; to: string } {
   from.setDate(from.getDate() - n);
   return { from: fmtDate(from), to: fmtDate(to) };
 }
-const totalTokens = (r: UsageRow) => (r.input_tokens ?? 0) + (r.output_tokens ?? 0) + (r.cached_tokens ?? 0);
+// 合计 = 输入 + 输出。cached 是输入的子集(命中缓存的那部分),
+// 再加一次会让「合计」比真实消耗凭空多出一份缓存量。
+const totalTokens = (r: UsageRow) => (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
+// 「输入」实际是「输入总量(含缓存命中)」,构成图里要拆成未命中 + 命中两段。
+const uncachedTokens = (r: UsageRow) => Math.max(0, (r.input_tokens ?? 0) - (r.cached_tokens ?? 0));
+
+// 平均首字时间 / 平均输出速度 / 缓存命中率:样本数为 0 时返回 null(表格显示 —)
+const avgTtft = (r: UsageRow) => ((r.ttft_count ?? 0) > 0 ? (r.ttft_ms_sum ?? 0) / r.ttft_count : null);
+const avgSpeed = (r: UsageRow) => {
+  const sec = (r.duration_ms_sum ?? 0) / 1000;
+  if (!((r.duration_count ?? 0) > 0) || !(sec > 0)) return null;
+  return (r.output_tokens ?? 0) / sec;
+};
+const hitRate = (r: UsageRow) => ((r.input_tokens ?? 0) > 0 ? (r.cached_tokens ?? 0) / r.input_tokens : null);
 
 const RANGE_TABS = [
   { id: '7', label: '最近 7 天' },
@@ -25,7 +38,18 @@ const RANGE_TABS = [
   { id: '90', label: '最近 90 天' },
 ];
 
-type SortKey = 'dim' | 'requests' | 'input_tokens' | 'cached_tokens' | 'output_tokens' | 'total';
+type SortKey = 'dim' | 'requests' | 'input_tokens' | 'cached_tokens' | 'output_tokens' | 'total' | 'ttft' | 'speed' | 'hit';
+
+// 可排序指标:数值列直接取字段,派生列(合计/首字/速度/命中率)前端计算
+function metricOf(r: UsageRow, k: SortKey): number {
+  switch (k) {
+    case 'ttft': return avgTtft(r) ?? -1;
+    case 'speed': return avgSpeed(r) ?? -1;
+    case 'hit': return hitRate(r) ?? -1;
+    case 'dim': return 0;
+    default: return (r[k] as number | undefined) ?? 0;
+  }
+}
 type SortDir = 'asc' | 'desc';
 
 // 可排序表头(Th 不透传 onClick,内嵌按钮)
@@ -130,14 +154,15 @@ export function Usage() {
         axisLine: { lineStyle: { color: C.line2 } }, axisTick: { show: false },
         axisLabel: { color: C.txt2, fontSize: 11 },
       },
+      // 轴标签用 K/M 简写,长数字在窄屏会顶出画布被裁掉
       yAxis: [
         {
           type: 'value',
-          axisLabel: { color: C.txt2, fontSize: 11 }, splitLine: { lineStyle: { color: C.line } },
+          axisLabel: { color: C.txt2, fontSize: 11, formatter: (v: number) => fmtK(v) }, splitLine: { lineStyle: { color: C.line } },
         },
         {
           type: 'value',
-          axisLabel: { color: C.txt2, fontSize: 11 }, splitLine: { show: false },
+          axisLabel: { color: C.txt2, fontSize: 11, formatter: (v: number) => fmtK(v) }, splitLine: { show: false },
         },
       ],
       series: [
@@ -164,26 +189,29 @@ export function Usage() {
     if (!modelRows) return null;
     const C = {
       accent: themeColor('--color-accent'), brand2: themeColor('--color-brand2'),
-      violet: themeColor('--color-violet'), warn: themeColor('--color-warn'), ok: themeColor('--color-ok'),
+      violet: themeColor('--color-violet'), yellow: themeColor('--color-yellow'), ok: themeColor('--color-ok'),
       txt2: themeColor('--color-txt2'), line: themeColor('--color-line'), line2: themeColor('--color-line2'),
     };
     const base = echartsBase();
     const top = [...modelRows].sort((a, b) => totalTokens(b) - totalTokens(a)).slice(0, 10);
     return {
       ...base,
-      grid: { ...base.grid, top: 52, left: 150 },
-      legend: { data: ['输入', '缓存', '输出'], top: 4, right: 8, itemWidth: 14, textStyle: { color: C.txt2, fontSize: 12 } },
+      // 模型名较长(deepseek/deepseek-v4.1-flash 之类),留足左侧刻度宽度并截断,
+      // 完整名称仍在 tooltip 与明细表里可见。
+      grid: { ...base.grid, top: 52, left: 232, right: 72 },
+      legend: { data: ['未命中缓存', '缓存', '输出'], top: 4, right: 8, itemWidth: 14, textStyle: { color: C.txt2, fontSize: 12 } },
       xAxis: {
         type: 'value',
-        axisLabel: { color: C.txt2, fontSize: 11 }, splitLine: { lineStyle: { color: C.line } },
+        axisLabel: { color: C.txt2, fontSize: 11, formatter: (v: number) => fmtK(v) }, splitLine: { lineStyle: { color: C.line } },
       },
       yAxis: {
         type: 'category', inverse: true, data: top.map(r => r.model ?? 'unknown'),
         axisLine: { lineStyle: { color: C.line2 } }, axisTick: { show: false },
-        axisLabel: { color: C.txt2, fontSize: 11 },
+        axisLabel: { color: C.txt2, fontSize: 11, width: 214, overflow: 'truncate' },
       },
       series: [
-        { name: '输入', type: 'bar', stack: 'tokens', data: top.map(r => r.input_tokens ?? 0), itemStyle: { color: C.accent }, barMaxWidth: 14 },
+        // 三段堆叠之和 = 合计(输入未命中 + 输入缓存命中 + 输出),不再把缓存算两遍
+        { name: '未命中缓存', type: 'bar', stack: 'tokens', data: top.map(uncachedTokens), itemStyle: { color: C.yellow }, barMaxWidth: 14 },
         { name: '缓存', type: 'bar', stack: 'tokens', data: top.map(r => r.cached_tokens ?? 0), itemStyle: { color: C.violet } },
         { name: '输出', type: 'bar', stack: 'tokens', data: top.map(r => r.output_tokens ?? 0), itemStyle: { color: C.brand2 } },
       ],
@@ -210,12 +238,26 @@ export function Usage() {
       r,
       dim: tab === 'model' ? (r.model ?? 'unknown') : (r.key_name ?? '(direct)'),
       total: totalTokens(r),
+      ttft: avgTtft(r),
+      speed: avgSpeed(r),
+      hit: hitRate(r),
     }));
     const dir = sortDir === 'asc' ? 1 : -1;
+    // 无观测数据的行(— )不论升降序都排在最后,避免空行占据榜首。
+    const val = (x: typeof rows[number]) => {
+      if (sortKey === 'total') return x.total;
+      if (sortKey === 'ttft') return x.ttft ?? -1;
+      if (sortKey === 'speed') return x.speed ?? -1;
+      if (sortKey === 'hit') return x.hit ?? -1;
+      return metricOf(x.r, sortKey);
+    };
     rows.sort((a, b) => {
       if (sortKey === 'dim') return a.dim.localeCompare(b.dim) * dir;
-      if (sortKey === 'total') return (a.total - b.total) * dir;
-      return (((a.r[sortKey] ?? 0) - (b.r[sortKey] ?? 0)) * dir);
+      const av = val(a), bv = val(b);
+      if (av < 0 && bv < 0) return 0;
+      if (av < 0) return 1;
+      if (bv < 0) return -1;
+      return (av - bv) * dir;
     });
     return rows;
   }, [tableRows, tab, sortKey, sortDir]);
@@ -262,7 +304,7 @@ export function Usage() {
 
       {/* ── 次图:模型 token 构成 ── */}
       <Card>
-        <CardHeader title="模型 Token 构成" extra={<span className="text-xs text-txt3">按总 tokens 取 Top 10 · 输入 / 缓存 / 输出</span>} />
+        <CardHeader title="模型 Token 构成" extra={<span className="hidden text-xs text-txt3 sm:inline">Top 10 · 未命中缓存 + 缓存 + 输出 = 合计</span>} />
         <CardBody>
           {modelRows === null ? (
             <Loading>加载模型维度数据…</Loading>
@@ -293,10 +335,13 @@ export function Usage() {
                 <SortTh label="缓存 tokens" k="cached_tokens" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
                 <SortTh label="输出 tokens" k="output_tokens" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
                 <SortTh label="合计 tokens" k="total" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
+                <SortTh label="平均首字时间" k="ttft" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
+                <SortTh label="平均输出速度" k="speed" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
+                <SortTh label="缓存命中率" k="hit" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map(({ r, dim, total }) => (
+              {sortedRows.map(({ r, dim, total, ttft, speed, hit }) => (
                 <tr key={`${dim}-${r.key_id ?? ''}`} className="transition-colors hover:bg-panel2/60">
                   <Td className="max-w-64 truncate font-mono text-xs">{dim}</Td>
                   <Td className="tnum text-right text-xs">{fmtInt(r.requests)}</Td>
@@ -304,10 +349,19 @@ export function Usage() {
                   <Td className="tnum text-right text-xs">{fmtInt(r.cached_tokens)}</Td>
                   <Td className="tnum text-right text-xs">{fmtInt(r.output_tokens)}</Td>
                   <Td className="tnum text-right text-xs font-medium text-txt">{fmtInt(total)}</Td>
+                  <Td className="tnum whitespace-nowrap text-right text-xs text-txt2">{ttft == null ? '—' : fmtMs(ttft)}</Td>
+                  <Td className="tnum whitespace-nowrap text-right text-xs text-txt2">{speed == null ? '—' : `${speed.toFixed(speed >= 100 ? 0 : 1)} tok/s`}</Td>
+                  <Td className="tnum whitespace-nowrap text-right text-xs text-txt2">{hit == null ? '—' : `${(hit * 100).toFixed(1)}%`}</Td>
                 </tr>
               ))}
             </tbody>
           </Table>
+        )}
+        {tableRows !== null && sortedRows.length > 0 && (
+          <div className="border-t border-line px-4 py-2 text-[11px] leading-relaxed text-txt3">
+            合计 tokens = 输入 + 输出(缓存 tokens 已含在输入内,不重复相加);缓存命中率 = 缓存 tokens ÷ 输入 tokens。
+            首字时间与输出速度只统计成功的请求;升级前的流式历史请求没有首字记录,显示 —。
+          </div>
         )}
       </Card>
     </div>
