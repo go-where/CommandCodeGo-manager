@@ -355,6 +355,10 @@ export function fmtK(n: number | null | undefined): string {
   if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
   return String(v);
 }
+/** 信用点 ≈ 美元:统一按货币显示(1 信用 ≈ $1,固定 2 位小数) */
+export function fmtMoney(n: number | null | undefined): string {
+  return '$' + (n ?? 0).toFixed(2);
+}
 export function fmtMs(n: number | null | undefined): string {
   const v = n ?? 0;
   return v >= 1000 ? (v / 1000).toFixed(1) + 's' : v + 'ms';

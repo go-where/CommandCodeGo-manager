@@ -7,15 +7,10 @@ import {
 } from 'lucide-react';
 import { fetchAccountUsage, refreshAccountUsage, pinAccount, type AccountUsageRow, type WindowLimit } from '../api';
 import {
-  Badge, Button, Card, CardBody, CardHeader, EmptyState, Loading, StatCard, toast, fmtAgo, fmtInt,
+  Badge, Button, Card, CardBody, CardHeader, EmptyState, Loading, StatCard, toast, fmtAgo, fmtInt, fmtMoney,
 } from '../ui';
 
 // ── 展示工具 ──────────────────────────────────────────────
-// 用量数值口径:整数原样,小数最多 2 位(0.3333 → 0.33)
-function fmt2(n: number | null | undefined): string {
-  const v = n ?? 0;
-  return Number.isInteger(v) ? String(v) : v.toFixed(2);
-}
 function fmtDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -35,9 +30,9 @@ function fmtTokens(n: number): string {
 }
 
 // ── 模板条(整行铺开:标签行 + 满宽条 + 倒计时独立成行,数值不再重叠) ──
-function WindowBar({ label, used, cap, exceeded, resetAt, now, unit }: {
+function WindowBar({ label, used, cap, exceeded, resetAt, now }: {
   label: string; used: number | null; cap: number | null;
-  exceeded?: boolean | null; resetAt?: number | null; now: number; unit: string;
+  exceeded?: boolean | null; resetAt?: number | null; now: number;
 }) {
   const known = used != null && cap != null && cap > 0;
   const pct = known ? Math.min(100, (used! / cap!) * 100) : 0;
@@ -54,7 +49,7 @@ function WindowBar({ label, used, cap, exceeded, resetAt, now, unit }: {
         <span className="tnum flex min-w-0 items-baseline justify-end gap-2 text-xs">
           {known ? (<>
             <span className={`truncate font-semibold ${txt}`}>
-              {fmt2(used)}<span className="mx-0.5 font-normal text-txt3">/</span>{fmt2(cap)} {unit}
+              {fmtMoney(used)}<span className="mx-0.5 font-normal text-txt3">/</span>{fmtMoney(cap)}
             </span>
             <span className={`shrink-0 text-[11px] ${txt}`}>{Math.round(pct)}%</span>
           </>) : (
@@ -82,19 +77,19 @@ function MonthlyBar({ used, total, remaining, resetAt, now }: {
     return (
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-xs text-txt2">本月额度</span>
-        <span className="tnum text-xs text-txt3" title="套餐总额未知,只显示剩余">剩余 {fmt2(remaining)} 信用</span>
+        <span className="tnum text-xs text-txt3" title="套餐总额未知,只显示剩余">剩余 {fmtMoney(remaining)}</span>
       </div>
     );
   }
   // 月度没有独立的滚动窗口,重置时间就是订阅期结束(与「续期 N 天」同一时点)
-  return <WindowBar label="本月额度" used={used} cap={total} resetAt={resetAt ?? null} now={now} unit="信用" />;
+  return <WindowBar label="本月额度" used={used} cap={total} resetAt={resetAt ?? null} now={now} />;
 }
 
 // 信用余额池的小徽标
 function Pool({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
     <span className="tnum inline-flex items-baseline gap-1 rounded-md border border-line bg-panel2 px-2 py-0.5 text-[11px] text-txt3">
-      {label}<span className={`font-semibold ${tone ?? 'text-txt2'}`}>{fmt2(value)}</span>
+      {label}<span className={`font-semibold ${tone ?? 'text-txt2'}`}>{fmtMoney(value)}</span>
     </span>
   );
 }
@@ -240,9 +235,9 @@ export function AccountUsage() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="账号(启用 / 总数)" value={loading ? '…' : `${stats.active} / ${stats.total}`}
           icon={<Users size={18} />} />
-        <StatCard label="信用余额合计" value={loading ? '…' : fmt2(stats.creditsTotal)}
+        <StatCard label="信用余额合计" value={loading ? '…' : fmtMoney(stats.creditsTotal)}
           sub="月度 + 购买 + 赠送" icon={<Wallet size={18} />} tone="ok" />
-        <StatCard label="本期消费合计" value={loading ? '…' : fmt2(stats.spentTotal)}
+        <StatCard label="本期消费合计" value={loading ? '…' : fmtMoney(stats.spentTotal)}
           sub="订阅账期口径" icon={<Coins size={18} />} tone="violet" />
         <StatCard label="窗口受限账号" value={loading ? '…' : String(stats.limited)}
           sub="5 小时或周窗口到顶" icon={<Gauge size={18} />} tone="amber"
@@ -347,10 +342,10 @@ export function AccountUsage() {
                       <div className="px-4 pb-3.5 pt-3 text-xs text-txt3">账号已停用,重新启用后可刷新用量。</div>
                     ) : d ? (
                       <div className="space-y-3.5 px-4 pb-1 pt-3.5">
-                        <WindowBar label="5 小时滚动" unit="条"
+                        <WindowBar label="5 小时滚动"
                           used={d.windowLimits?.fiveHour?.used ?? null} cap={d.windowLimits?.fiveHour?.cap ?? null}
                           exceeded={d.windowLimits?.fiveHour?.exceeded} resetAt={d.windowLimits?.fiveHour?.resetAt} now={now} />
-                        <WindowBar label="本周" unit="条"
+                        <WindowBar label="本周"
                           used={d.windowLimits?.weekly?.used ?? null} cap={d.windowLimits?.weekly?.cap ?? null}
                           exceeded={d.windowLimits?.weekly?.exceeded} resetAt={d.windowLimits?.weekly?.resetAt} now={now} />
                         <MonthlyBar used={c?.monthlyUsed ?? null} total={c?.monthlyTotal ?? null}
@@ -370,7 +365,7 @@ export function AccountUsage() {
                           <span className="text-[11px] text-txt3">信用余额</span>
                           <span className={`tnum text-xl font-bold leading-none ${
                             (c?.totalRemaining ?? 0) <= 0 ? 'text-err' : c?.belowThreshold ? 'text-warn' : 'text-ok'}`}>
-                            {fmt2(c?.totalRemaining)}
+                            {fmtMoney(c?.totalRemaining)}
                           </span>
                           <Pool label="月" value={c?.monthly ?? 0} tone="text-txt" />
                           <Pool label="购" value={c?.purchased ?? 0} />
@@ -379,7 +374,7 @@ export function AccountUsage() {
                         <div className="flex items-baseline gap-1.5 text-xs text-txt3">
                           <Activity size={12} className="self-center text-violet" />
                           <span className="tnum">
-                            本期 <span className="font-semibold text-violet">{fmt2(p?.totalCost)}</span> 信用
+                            本期 <span className="font-semibold text-violet">{fmtMoney(p?.totalCost)}</span>
                             · {fmtInt(p?.totalCount)} 次 · {fmtTokens(p?.totalTokens ?? 0)} tok
                           </span>
                         </div>
@@ -402,15 +397,15 @@ export function AccountUsage() {
                               <KV label="完成 / 失败" value={`${fmtInt(p?.completedCount)} / ${fmtInt(p?.failedCount)}`} />
                               <KV label="成功率" value={`${(p?.successRate ?? 0).toFixed(1)}%`}
                                 tone={(p?.successRate ?? 100) >= 90 ? 'text-ok' : 'text-warn'} />
-                              <KV label="总消费" value={`${fmt2(p?.totalCost)} 信用`} tone="text-violet" />
-                              <KV label="平均消费" value={`${fmt2(p?.averageCost)} 信用`} />
+                              <KV label="总消费" value={fmtMoney(p?.totalCost)} tone="text-violet" />
+                              <KV label="平均消费" value={fmtMoney(p?.averageCost)} />
                               <KV label="输入 tokens" value={fmtTokens(p?.totalTokensIn ?? 0)} />
                               <KV label="输出 tokens" value={fmtTokens(p?.totalTokensOut ?? 0)} />
                               <KV label="合计 tokens" value={fmtTokens(p?.totalTokens ?? 0)} />
-                              <KV label="消费构成(月/购/赠)" title={`${fmt2(p?.totalMonthlyCredits)} / ${fmt2(p?.totalPurchasedCredits)} / ${fmt2(p?.totalFreeCredits)}`}
-                                value={`${fmt2(p?.totalMonthlyCredits)}/${fmt2(p?.totalPurchasedCredits)}/${fmt2(p?.totalFreeCredits)}`} />
-                              <KV label="信用余额(月/购/赠)" title={c ? `${fmt2(c.monthly)} / ${fmt2(c.purchased)} / ${fmt2(c.free)}` : undefined}
-                                value={c ? `${fmt2(c.monthly)}/${fmt2(c.purchased)}/${fmt2(c.free)}` : '—'} />
+                              <KV label="消费构成(月/购/赠)" title={`${fmtMoney(p?.totalMonthlyCredits)} / ${fmtMoney(p?.totalPurchasedCredits)} / ${fmtMoney(p?.totalFreeCredits)}`}
+                                value={`${fmtMoney(p?.totalMonthlyCredits)}/${fmtMoney(p?.totalPurchasedCredits)}/${fmtMoney(p?.totalFreeCredits)}`} />
+                              <KV label="信用余额(月/购/赠)" title={c ? `${fmtMoney(c.monthly)} / ${fmtMoney(c.purchased)} / ${fmtMoney(c.free)}` : undefined}
+                                value={c ? `${fmtMoney(c.monthly)}/${fmtMoney(c.purchased)}/${fmtMoney(c.free)}` : '—'} />
                               <KV label="订阅周期" wide
                                 title={d.plan ? `${d.plan.currentPeriodStart?.slice(0, 10)} ~ ${d.plan.currentPeriodEnd?.slice(0, 10)}` : undefined}
                                 value={fmtPeriodRange(d.plan?.currentPeriodStart, d.plan?.currentPeriodEnd)} />
