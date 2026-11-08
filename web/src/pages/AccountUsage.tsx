@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { fetchAccountUsage, refreshAccountUsage, pinAccount, type AccountUsageRow, type WindowLimit } from '../api';
 import {
-  Badge, Button, Card, CardBody, CardHeader, EmptyState, Loading, StatCard, toast, fmtAgo, fmtInt, fmtMoney,
+  Badge, Button, Card, CardBody, CardHeader, EmptyState, Loading, StatCard, toast, fmtAgo, fmtInt, fmtMoney, fmtMoneyCompact,
 } from '../ui';
 
 // ── 展示工具 ──────────────────────────────────────────────
@@ -101,6 +101,25 @@ function KV({ label, value, tone, title, wide }: { label: string; value: ReactNo
       <div className="truncate text-[10px] uppercase tracking-wide text-txt3" title={label}>{label}</div>
       <div title={title ?? (typeof value === 'string' ? value : undefined)}
         className={`tnum mt-0.5 min-w-0 whitespace-nowrap text-sm font-medium ${tone ?? 'text-txt'}`}>{value}</div>
+    </div>
+  );
+}
+
+// 月额度为主动作,「购 / 赠」缩到第二行小字,避免三个金额挤在一行被截断
+function TripleKV({ label, monthly, purchased, free }: {
+  label: string; monthly: number; purchased: number; free: number;
+}) {
+  const full = `月 ${fmtMoney(monthly)} · 购 ${fmtMoney(purchased)} · 赠 ${fmtMoney(free)}`;
+  return (
+    <div className="min-w-0 rounded-lg border border-line bg-panel2 px-3 py-2" title={`${label}:${full}`}>
+      <div className="truncate text-[10px] uppercase tracking-wide text-txt3">{label}</div>
+      <div className="tnum mt-0.5 whitespace-nowrap text-sm font-medium text-txt">
+        <span className="mr-0.5 text-[10px] font-normal text-txt3">月</span>{fmtMoneyCompact(monthly)}
+      </div>
+      <div className="tnum mt-0.5 flex min-w-0 items-baseline gap-2 overflow-hidden whitespace-nowrap text-[10px] text-txt3">
+        <span>购<span className="ml-0.5 text-txt2">{fmtMoneyCompact(purchased)}</span></span>
+        <span>赠<span className="ml-0.5 text-txt2">{fmtMoneyCompact(free)}</span></span>
+      </div>
     </div>
   );
 }
@@ -402,10 +421,10 @@ export function AccountUsage() {
                               <KV label="输入 tokens" value={fmtTokens(p?.totalTokensIn ?? 0)} />
                               <KV label="输出 tokens" value={fmtTokens(p?.totalTokensOut ?? 0)} />
                               <KV label="合计 tokens" value={fmtTokens(p?.totalTokens ?? 0)} />
-                              <KV label="消费构成(月/购/赠)" title={`${fmtMoney(p?.totalMonthlyCredits)} / ${fmtMoney(p?.totalPurchasedCredits)} / ${fmtMoney(p?.totalFreeCredits)}`}
-                                value={`${fmtMoney(p?.totalMonthlyCredits)}/${fmtMoney(p?.totalPurchasedCredits)}/${fmtMoney(p?.totalFreeCredits)}`} />
-                              <KV label="信用余额(月/购/赠)" title={c ? `${fmtMoney(c.monthly)} / ${fmtMoney(c.purchased)} / ${fmtMoney(c.free)}` : undefined}
-                                value={c ? `${fmtMoney(c.monthly)}/${fmtMoney(c.purchased)}/${fmtMoney(c.free)}` : '—'} />
+                              <TripleKV label="消费构成" monthly={p?.totalMonthlyCredits ?? 0}
+                                purchased={p?.totalPurchasedCredits ?? 0} free={p?.totalFreeCredits ?? 0} />
+                              <TripleKV label="信用余额" monthly={c?.monthly ?? 0}
+                                purchased={c?.purchased ?? 0} free={c?.free ?? 0} />
                               <KV label="订阅周期" wide
                                 title={d.plan ? `${d.plan.currentPeriodStart?.slice(0, 10)} ~ ${d.plan.currentPeriodEnd?.slice(0, 10)}` : undefined}
                                 value={fmtPeriodRange(d.plan?.currentPeriodStart, d.plan?.currentPeriodEnd)} />

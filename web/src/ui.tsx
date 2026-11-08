@@ -359,6 +359,11 @@ export function fmtK(n: number | null | undefined): string {
 export function fmtMoney(n: number | null | undefined): string {
   return '$' + (n ?? 0).toFixed(2);
 }
+/** 三池并列时的紧凑货币:整数省略小数($0),其余保留 2 位($1.38) */
+export function fmtMoneyCompact(n: number | null | undefined): string {
+  const v = n ?? 0;
+  return '$' + (Number.isInteger(v) ? String(v) : v.toFixed(2));
+}
 export function fmtMs(n: number | null | undefined): string {
   const v = n ?? 0;
   return v >= 1000 ? (v / 1000).toFixed(1) + 's' : v + 'ms';
