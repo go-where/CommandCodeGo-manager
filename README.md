@@ -154,6 +154,19 @@ cd web && npm install && cd ..
 npm run build:web
 ```
 
+#### Windows 启停脚本(可选)
+
+仓库根目录自带 4 个脚本,工作目录取自脚本自身位置(**不含任何绝对路径**),整个文件夹拷到别的
+Windows 机器同样可用;唯一前提是 `node` 已在 PATH 中(Node ≥ 22.5)。端口默认 3050,
+可用环境变量 `PORT` 或命令行参数覆盖(如 `start.bat 3060`、`stop.bat 3060`)。
+
+| 脚本 | 作用 |
+|---|---|
+| `start.bat` | 前台启动,保留控制台窗口方便看日志 |
+| `start-silent.vbs` | 后台静默启动(无窗口,适合快捷方式/开机自启) |
+| `status.bat` | 查看该端口的 LISTENING 状态与 PID |
+| `stop.bat` | 结束监听该端口的进程(带 `/T`,连带子进程) |
+
 ### 方式二:单文件 bundle
 
 ```bash
