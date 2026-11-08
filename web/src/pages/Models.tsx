@@ -173,7 +173,8 @@ export function Models() {
     let cost = 0, requests = 0, tokens = 0;
     if (usage) for (const [id, u] of usage) {
       requests += u.requests;
-      tokens += u.input + u.cached + u.output;
+      // input_tokens 已是含缓存命中的总输入(见上方 estCost 注释),再加 cached 会重复计一份
+      tokens += u.input + u.output;
       const cat = CATALOG_BY_ID.get(id);
       if (cat) cost += estCost(cat, u);
     }
