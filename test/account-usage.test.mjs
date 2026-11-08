@@ -202,3 +202,50 @@ test('account-usage:上游全挂时行级 error,不影响其他账号', async ()
     assert.match(snap.rows[0].error, /credits: HTTP 401/);
   } finally { await s.close(); }
 });
+
+test('account-usage:月度总额未知档位时按「剩余 + 本期月消费」反推,版本后缀回退套餐表', async () => {
+  const mkMock = (planId) => ({
+    onRequest: (req, res) => {
+      const url = new URL(req.url, 'http://x');
+      const json = (obj) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      if (url.pathname === '/alpha/whoami') return json({ success: true, user: { userName: 'u' }, org: null }), false;
+      if (url.pathname === '/alpha/billing/credits') return json({
+        credits: { belowThreshold: false, monthlyCredits: 12, purchasedCredits: 0, freeCredits: 0 },
+        windowLimits: { fiveHour: { used: 1, cap: 3, resetAt: 0 }, weekly: { used: 2, cap: 6, resetAt: 0 } },
+      }), false;
+      if (url.pathname === '/alpha/billing/subscriptions') return json({
+        success: true,
+        data: { status: 'active', planId, cancelAtPeriodEnd: false,
+          currentPeriodStart: '2026-09-01T00:00:00.000Z', currentPeriodEnd: '2026-10-01T00:00:00.000Z' },
+      }), false;
+      if (url.pathname === '/alpha/usage/summary') return json({
+        totalCount: 3, totalCost: 3, averageCost: 1, successRate: 100, completedCount: 3, failedCount: 0,
+        totalTokensIn: 10, totalTokensOut: 20, totalTokens: 30,
+        totalCredits: 3, totalFreeCredits: 0, totalMonthlyCredits: 3, totalPurchasedCredits: 0,
+      }), false;
+      return;
+    },
+  });
+
+  // 1) 未收录的新档位:用 剩余(12) + 本期月消费(3) 反推出总额 15
+  let s = await setup(mkMock('individual-quantum-v3'));
+  try {
+    await s.proxy.post('/admin/api/upstream-keys', { name: 'unknown-plan', apiKey: 'user_unknown_plan_01' });
+    await s.proxy.post('/admin/api/account-usage/refresh', {});
+    const d = (await (await s.proxy.get('/admin/api/account-usage')).json()).rows[0].data;
+    assert.equal(d.credits.monthlyTotal, 15, '未知档位反推月度总额');
+    assert.equal(d.credits.monthlyUsed, 3, '已用 = 总额 - 剩余');
+  } finally { await s.close(); }
+
+  // 2) 版本后缀回退:individual-go-v1 命中套餐表 individual-go = 10,不用反推
+  s = await setup(mkMock('individual-go-v1'));
+  try {
+    await s.proxy.post('/admin/api/upstream-keys', { name: 'go-v1', apiKey: 'user_go_v1_0001' });
+    await s.proxy.post('/admin/api/account-usage/refresh', {});
+    const d = (await (await s.proxy.get('/admin/api/account-usage')).json()).rows[0].data;
+    assert.equal(d.credits.monthlyTotal, 10, '-v1 后缀回退到 individual-go');
+    assert.equal(d.credits.monthlyUsed, 0, '剩余 12 > 总额 10,已用钳到 0');
+    assert.equal(d.plan.name, 'Go', '展示名同样走回退');
+  } finally { await s.close(); }
+});
+

@@ -19,6 +19,11 @@ function fmt2(n: number | null | undefined): string {
 function fmtDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  // 月度重置动辄几百小时:≥24h 折成「X 天 Yh」,否则周/月条会显示成「607h6m」
+  if (h >= 24) {
+    const d = Math.floor(h / 24), rh = h % 24;
+    return rh > 0 ? `${d} 天 ${rh}h` : `${d} 天`;
+  }
   if (h > 0) return `${h}h${m}m`;
   if (m > 0) return `${m}m`;
   return `${s}s`;
@@ -70,8 +75,8 @@ function WindowBar({ label, used, cap, exceeded, resetAt, now, unit }: {
 }
 
 // 月度条:cap 未知(新套餐档位)时退化为「剩余 X」文本行
-function MonthlyBar({ used, total, remaining, now }: {
-  used: number | null; total: number | null; remaining: number; now: number;
+function MonthlyBar({ used, total, remaining, resetAt, now }: {
+  used: number | null; total: number | null; remaining: number; resetAt?: number | null; now: number;
 }) {
   if (used == null || total == null) {
     return (
@@ -81,7 +86,8 @@ function MonthlyBar({ used, total, remaining, now }: {
       </div>
     );
   }
-  return <WindowBar label="本月额度" used={used} cap={total} now={now} unit="信用" />;
+  // 月度没有独立的滚动窗口,重置时间就是订阅期结束(与「续期 N 天」同一时点)
+  return <WindowBar label="本月额度" used={used} cap={total} resetAt={resetAt ?? null} now={now} unit="信用" />;
 }
 
 // 信用余额池的小徽标
@@ -347,7 +353,9 @@ export function AccountUsage() {
                         <WindowBar label="本周" unit="条"
                           used={d.windowLimits?.weekly?.used ?? null} cap={d.windowLimits?.weekly?.cap ?? null}
                           exceeded={d.windowLimits?.weekly?.exceeded} resetAt={d.windowLimits?.weekly?.resetAt} now={now} />
-                        <MonthlyBar used={c?.monthlyUsed ?? null} total={c?.monthlyTotal ?? null} remaining={c?.monthly ?? 0} now={now} />
+                        <MonthlyBar used={c?.monthlyUsed ?? null} total={c?.monthlyTotal ?? null}
+                          remaining={c?.monthly ?? 0} now={now}
+                          resetAt={d.plan?.currentPeriodEnd ? Date.parse(d.plan.currentPeriodEnd) : null} />
                       </div>
                     ) : (
                       <div className="px-4 pb-3.5 pt-3 text-xs text-txt3">

@@ -35,6 +35,15 @@ const PLAN_DISPLAY = {
   'individual-provider': 'Provider', 'individual-max': 'Max', 'individual-ultra': 'Ultra', 'teams-pro': 'Teams Pro',
 };
 
+// 上游会给档位加版本后缀(individual-go-v1 / individual-pro-v1):先查原样,再去掉 -v1/-v2
+// 回退到同档位条目,避免新版本一上线月度条就只剩「剩余 X 信用」而没有进度条。
+function planTableLookup(table, planId) {
+  if (!planId) return null;
+  if (table[planId] != null) return table[planId];
+  const base = planId.replace(/-v\d+$/, '');
+  return table[base] ?? null;
+}
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
 // 与 generate 转发同一套 CLI 身份头(User-Agent/x-cli-environment/版本/项目 slug),
@@ -84,9 +93,17 @@ async function fetchAccountUsage(apiKey) {
   const sub = subsBody?.data ?? null;
   // 四个端点全失败 = 会话失效/网络不通,整行按失败处理(带空 data 的「成功」会误导刷新计数)
   if (!whoami && !creditsBody && !subsBody && !summary) throw new Error(errors.join('; '));
-  const planId = typeof sub?.planId === 'string' ? sub.planId : null;  const monthlyTotal = sub?.status === 'active' ? (PLAN_TOTAL_CREDITS[planId] ?? null) : null;
+  const planId = typeof sub?.planId === 'string' ? sub.planId : null;
   const monthlyRemaining = num(creditsBody?.credits?.monthlyCredits);
   const periodEnd = sub?.currentPeriodEnd ?? null;
+  // 月度总额三档来源:套餐表(含去版本后缀)→ 剩余 + 本期已消耗的月度信用反推 → 未知(null)。
+  // credits 接口只报剩余,没有总额就给不出进度条;反推的总额与「已用 + 剩余」自洽,
+  // 对未收录的新档位也能画出正确的百分比。
+  let monthlyTotal = sub?.status === 'active' ? planTableLookup(PLAN_TOTAL_CREDITS, planId) : null;
+  if (monthlyTotal == null && creditsBody?.credits) {
+    const spentInPeriod = num(summary?.totalMonthlyCredits);
+    if (spentInPeriod > 0) monthlyTotal = monthlyRemaining + spentInPeriod;
+  }
 
   return {
     data: {
@@ -97,7 +114,7 @@ async function fetchAccountUsage(apiKey) {
       },
       plan: sub ? {
         id: planId,
-        name: PLAN_DISPLAY[planId] ?? planId,
+        name: planTableLookup(PLAN_DISPLAY, planId) ?? planId,
         status: typeof sub.status === 'string' ? sub.status : null,
         cancelAtPeriodEnd: sub.cancelAtPeriodEnd === true,
         currentPeriodStart: sub.currentPeriodStart ?? null,
