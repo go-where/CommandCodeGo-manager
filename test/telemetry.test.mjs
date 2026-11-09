@@ -146,3 +146,40 @@ test('telemetry: SSE completion event is published after persistence; immediate 
     await s.close();
   }
 });
+
+// 回归:SSE 已发 200 之后才失败(流空闲超时)也必须留下可查的错误标记,
+// 否则面板会把整条失败请求显示成成功(「多次重试但日志里看不到失败」)。
+test('telemetry:流式 200 但流内超时 —— error_type=stream_timeout 且计入 overview 错误数', async () => {
+  const s = await setup({
+    env: { CC_STREAM_IDLE_MS: '300' },
+    onRequest: (req, res) => {
+      if (req.url !== '/alpha/generate') {
+        // 预请求(fingerprint/lifecycle)必须正常应答,否则代理卡在初始化
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+        return false;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('{"type":"text-start"}\n');
+      res.write('{"type":"text-delta","text":"partial"}\n');
+      return false; // 之后不再写数据 → 触发代理的流空闲超时
+    },
+  });
+  try {
+    const r = await s.proxy.post('/v1/chat/completions',
+      { model: 'm', stream: true, messages: [{ role: 'user', content: 'hi' }] }, AUTH);
+    assert.equal(r.status, 200, 'SSE 头已发出,HTTP 状态只能是 200');
+    const text = await r.text();
+    assert.ok(text.includes('partial'), '已发出的内容不能丢');
+    await sleep(400); // 遥测异步落库
+    const db = openDb(s.proxy);
+    const row = db.prepare("SELECT * FROM requests WHERE endpoint = '/v1/chat/completions' AND stream = 1").get();
+    db.close();
+    assert.ok(row, '失败请求也必须落库');
+    assert.equal(row.status_code, 200);
+    assert.equal(row.error_type, 'stream_timeout', '流内失败必须写进 error_type,面板才看得见');
+    const overview = await (await s.proxy.get('/admin/api/overview')).json();
+    assert.equal(overview.today.requests, 1);
+    assert.equal(overview.today.errors, 1, 'overview 错误数必须包含流内失败');
+  } finally { await s.close(); }
+});

@@ -55,10 +55,16 @@ export function recordRequest(rec) {
  *                                   (闭包读取各分支局部变量的终值,免多处出口插点)
  * 鉴权上下文从 req.ccpAuth 读取。
  * 返回的 t 不参与控制流,未赋值的字段按缺省记录。
+ *   t.noteStreamError(type)      —— 可选,SSE 流内报错(HTTP 可能已是 200)时调用,
+ *                                   把该类型落进 error_type,面板才不会把失败当成功
  */
 export function instrumentRequest(req, res, endpoint) {
   const startedAt = Date.now();
-  const t = { model: null, stream: false, provider: null, finishReason: null };
+  const t = { model: null, stream: false, provider: null, finishReason: null, streamError: null };
+  // 首个流内错误类型生效(同一次请求可能叠加多个出口,只记根因)
+  t.noteStreamError = (type) => {
+    if (typeof type === 'string' && type.length > 0 && t.streamError == null) t.streamError = type;
+  };
 
   let statusCode = null;
   // 首字到达时间:首个上游事件写出前调用 t.firstTokenAt(startTime) 打点(仅记第一次)。
@@ -101,6 +107,8 @@ export function instrumentRequest(req, res, endpoint) {
         clientDisconnected: !res.writableEnded,
       };
       if (rec.statusCode >= 400 && !rec.errorType) rec.errorType = `http_${rec.statusCode}`;
+      // HTTP 已 200 但流内报错(空闲超时/零输出/截断等):状态码看不出失败,用 error_type 标注
+      else if (!rec.errorType && t.streamError != null) rec.errorType = t.streamError;
       recordRequest(rec);
     } catch (e) {
       log('warn', 'Telemetry instrument failed', { error: e.message });

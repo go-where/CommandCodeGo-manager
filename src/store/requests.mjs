@@ -24,7 +24,8 @@ export async function summarizeSince(ts) {
   if (!db) return { requests: 0, errors: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
   const r = db.prepare(`
     SELECT COUNT(*) AS requests,
-      COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS errors,
+      -- 错误数 = 4xx/5xx + 流内报错(HTTP 仍为 200,靠 error_type 标注的失败)
+      COALESCE(SUM(CASE WHEN status_code >= 400 OR error_type IS NOT NULL THEN 1 ELSE 0 END), 0) AS errors,
       COALESCE(SUM(input_tokens), 0) AS inputTokens,
       COALESCE(SUM(output_tokens), 0) AS outputTokens,
       COALESCE(SUM(cached_tokens), 0) AS cachedTokens

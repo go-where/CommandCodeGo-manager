@@ -367,6 +367,7 @@ async function handleChatCompletions(req, res) {
             }
           }
           if (translator.upstreamError) {
+            t.noteStreamError?.('stream_upstream_error');
             if (!started) {
               sendJSON(res, translator.upstreamError.status, translator.upstreamError.body);
               return;
@@ -379,6 +380,7 @@ async function handleChatCompletions(req, res) {
           // 零输出只是它的表象（此时按 429 报会掩盖真实原因）。
           } else if (translator.incompleteDetail()) {
             const detail = translator.incompleteDetail();
+            t.noteStreamError?.('stream_incomplete');
             log('warn', 'Upstream stream incomplete', { path: '/v1/chat/completions', reason: detail });
             const err = incompleteUpstreamError(detail);
             try { if (!abortController.signal.aborted) abortController.abort(); } catch {}
@@ -388,6 +390,7 @@ async function handleChatCompletions(req, res) {
           // 判定依据 = usage 计数与本地内容计数(translator.outputTokens 两者取其一,
           // 上游漏发 totalUsage 时不再把完整回答误杀成 429,对齐 /v1/messages)
           } else if (translator.outputTokens === 0) {
+            t.noteStreamError?.('stream_empty_response');
             try { if (!abortController.signal.aborted) abortController.abort(); } catch {}
             if (!started) {
               sendJSON(res, 429, { error: { message: 'Empty response from upstream (zero output tokens)', type: 'rate_limit_error' }, retry_after: 10 });
@@ -407,6 +410,7 @@ async function handleChatCompletions(req, res) {
           // 客户端已断连，只清理（close handler 已调用 abortController.abort()）
           try { reader.cancel(); } catch {}
         } else if (e.message === 'STREAM_IDLE_TIMEOUT') {
+          t.noteStreamError?.('stream_timeout');
           log('warn', 'Stream idle timeout', {
             path: '/v1/chat/completions',
             model,
@@ -440,6 +444,7 @@ async function handleChatCompletions(req, res) {
           }
         } else {
           log('error', 'Stream error', { message: e.message });
+          t.noteStreamError?.('stream_error');
           try { abortController.abort(); } catch {} // 打断 CC 上游
           if (!started) {
             sendJSON(res, 502, { error: { message: `Upstream error: ${e.message}`, type: 'proxy_error', input_tokens: 0 }, retry_after: 10 });
