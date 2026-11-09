@@ -9,5 +9,6 @@ here = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.CurrentDirectory = here
 ' Upstream stream idle timeout in ms. The 30000 default kills legitimate long
 ' reasoning / slow first token (issue #19); 180000 leaves enough headroom.
-sh.Environment("PROCESS")("CC_STREAM_IDLE_MS") = "180000"
+If sh.Environment("PROCESS")("CC_STREAM_IDLE_MS") = "" Then _
+  sh.Environment("PROCESS")("CC_STREAM_IDLE_MS") = "180000"
 sh.Run "cmd /c node server.mjs", 0, False
